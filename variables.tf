@@ -42,3 +42,14 @@ variable "node_count" {
   type        = number
   default     = 1
 }
+
+variable "cluster_vip" {
+  description = "Virtual IP for control plane endpoint (optional, empty for single-node)"
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.cluster_vip == "" || can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}$", var.cluster_vip))
+    error_message = "cluster_vip must be a valid IPv4 address or empty string"
+  }
+}

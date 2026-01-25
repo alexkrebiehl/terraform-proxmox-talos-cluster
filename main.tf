@@ -56,7 +56,7 @@ resource "proxmox_vm_qemu" "talos_cp" {
   }
 
   lifecycle {
-    ignore_changes = [boot]
+    ignore_changes = [boot, disk, startup_shutdown]
   }
 }
 

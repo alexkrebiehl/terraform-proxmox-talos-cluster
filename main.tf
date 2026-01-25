@@ -1,57 +1,66 @@
-locals {
-  # Static IPs for cluster nodes (outside DHCP range 192.168.11.150-254)
-  static_ips = ["192.168.11.61", "192.168.11.62", "192.168.11.63"]
-  node_ips   = slice(local.static_ips, 0, var.node_count)
-  gateway    = "192.168.11.1"
+# =============================================================================
+# Unifi Network Configuration
+# =============================================================================
 
-  # VIP configuration
-  vip_enabled = var.cluster_vip != null && var.cluster_vip != ""
+# Create dedicated VLAN network for Talos cluster
+resource "unifi_virtual_network" "talos" {
+  name         = "${var.cluster_name}-network"
+  subnet       = var.network_cidr
+  vlan         = var.vlan_id
+  enabled      = true
+  vlan_enabled = true
 
-  # Cluster endpoint uses VIP when available, otherwise first node IP
-  cluster_endpoint = local.vip_enabled ? "https://${var.cluster_vip}:6443" : "https://${local.node_ips[0]}:6443"
-
-  # Talosctl endpoints include VIP as primary when available
-  talos_endpoints = local.vip_enabled ? concat([var.cluster_vip], local.node_ips) : local.node_ips
+  dhcp_server = {
+    enabled     = true
+    start       = cidrhost(var.network_cidr, var.network_dhcp_start)
+    stop        = cidrhost(var.network_cidr, var.network_dhcp_stop)
+    dns_servers = var.nameservers
+  }
 }
+
+# =============================================================================
+# Proxmox VMs for Talos Control Plane
+# =============================================================================
 
 # Proxmox VMs for Talos control plane
 resource "proxmox_vm_qemu" "talos_cp" {
-  count       = var.node_count
+  count       = var.cp_count
   name        = "${var.cluster_name}-cp-${count.index + 1}"
-  target_node = "pve"
+  target_node = var.proxmox_node
 
   agent         = 1
   agent_timeout = 120
   qemu_os       = "l26"
   scsihw        = "virtio-scsi-pci"
-  boot          = "order=scsi0;ide2" 
+  boot          = "order=scsi0;ide2"
 
   skip_ipv6 = true
 
   cpu {
-    cores = var.node_cpu_cores
+    cores = var.cp_cpu_cores
   }
-  memory = var.node_memory
+  memory = var.cp_memory
 
   network {
     id       = 0
     bridge   = "vmbr0"
     model    = "virtio"
     firewall = false
+    tag      = unifi_virtual_network.talos.vlan
   }
 
   # Boot disk
   disk {
     type    = "disk"
     storage = "vm-data"
-    size    = var.node_disk_size
+    size    = var.cp_disk_size
     slot    = "scsi0"
   }
 
   # Talos ISO
   disk {
     type = "cdrom"
-    iso  = "local:iso/talos-v1.12.2-qemu-guest-agent-nocloud-amd64.iso"
+    iso  = var.talos_iso
     slot = "ide2"
   }
 
@@ -65,7 +74,7 @@ resource "talos_machine_secrets" "this" {}
 
 # Generate machine configuration for each control plane node
 data "talos_machine_configuration" "cp" {
-  count            = var.node_count
+  count            = var.cp_count
   cluster_name     = var.cluster_name
   machine_type     = "controlplane"
   cluster_endpoint = local.cluster_endpoint
@@ -75,25 +84,25 @@ data "talos_machine_configuration" "cp" {
       machine = {
         install = {
           # Image Factory installer with qemu-guest-agent extension
-          image = "factory.talos.dev/installer/ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515:v1.12.0"
+          image = var.talos_installer_image
         }
         network = {
           interfaces = [
             merge(
               {
                 interface = "ens18"
-                addresses = ["${local.node_ips[count.index]}/24"]
+                addresses = ["${local.cp_ips[count.index]}/${local.network_prefix_length}"]
                 routes = [
                   {
                     network = "0.0.0.0/0"
-                    gateway = local.gateway
+                    gateway = var.gateway
                   }
                 ]
               },
               local.vip_enabled ? { vip = { ip = var.cluster_vip } } : {}
             )
           ]
-          nameservers = ["1.1.1.1", "8.8.8.8"]
+          nameservers = var.nameservers
         }
       }
       cluster = local.vip_enabled ? {
@@ -109,17 +118,17 @@ data "talos_machine_configuration" "cp" {
 data "talos_client_configuration" "this" {
   cluster_name         = var.cluster_name
   client_configuration = talos_machine_secrets.this.client_configuration
-  nodes                = local.node_ips
+  nodes                = local.cp_ips
   endpoints            = local.talos_endpoints
 }
 
 # Apply machine configuration to each control plane node (connect using DHCP IP)
 resource "talos_machine_configuration_apply" "cp" {
-  count                       = var.node_count
+  count                       = var.cp_count
   client_configuration        = talos_machine_secrets.this.client_configuration
   machine_configuration_input = data.talos_machine_configuration.cp[count.index].machine_configuration
   # Connect using the DHCP IP from Proxmox, config will set static IP
-  node                        = proxmox_vm_qemu.talos_cp[count.index].default_ipv4_address
+  node = proxmox_vm_qemu.talos_cp[count.index].default_ipv4_address
 }
 
 # Wait for nodes to switch to static IPs after config apply
@@ -133,7 +142,7 @@ resource "talos_machine_bootstrap" "this" {
   depends_on = [time_sleep.wait_for_static_ip]
 
   client_configuration = talos_machine_secrets.this.client_configuration
-  node                 = local.node_ips[0]
+  node                 = local.cp_ips[0]
 }
 
 # Get kubeconfig
@@ -141,7 +150,7 @@ resource "talos_cluster_kubeconfig" "this" {
   depends_on = [talos_machine_bootstrap.this]
 
   client_configuration = talos_machine_secrets.this.client_configuration
-  node                 = local.node_ips[0]
+  node                 = local.cp_ips[0]
 }
 
 resource "local_file" "kubeconfig" {
@@ -156,21 +165,98 @@ resource "local_file" "talosconfig" {
   file_permission = "0600"
 }
 
-output "kubeconfig_yaml" {
-  value     = talos_cluster_kubeconfig.this.kubeconfig_raw
-  sensitive = true
+# =============================================================================
+# Worker Nodes
+# =============================================================================
+
+# Proxmox VMs for Talos workers
+resource "proxmox_vm_qemu" "talos_worker" {
+  count       = var.worker_count
+  name        = "${var.cluster_name}-worker-${count.index + 1}"
+  target_node = var.proxmox_node
+
+  agent         = 1
+  agent_timeout = 120
+  qemu_os       = "l26"
+  scsihw        = "virtio-scsi-pci"
+  boot          = "order=scsi0;ide2"
+
+  skip_ipv6 = true
+
+  cpu {
+    cores = var.worker_cpu_cores
+  }
+  memory = var.worker_memory
+
+  network {
+    id       = 0
+    bridge   = "vmbr0"
+    model    = "virtio"
+    firewall = false
+    tag      = unifi_virtual_network.talos.vlan
+  }
+
+  # Boot disk
+  disk {
+    type    = "disk"
+    storage = "vm-data"
+    size    = var.worker_disk_size
+    slot    = "scsi0"
+  }
+
+  # Talos ISO
+  disk {
+    type = "cdrom"
+    iso  = var.talos_iso
+    slot = "ide2"
+  }
+
+  lifecycle {
+    ignore_changes = [boot, disk, startup_shutdown]
+  }
 }
 
-output "vm_ip_addresses" {
-  value = local.node_ips
+# Generate machine configuration for each worker node
+data "talos_machine_configuration" "worker" {
+  count            = var.worker_count
+  cluster_name     = var.cluster_name
+  machine_type     = "worker"
+  cluster_endpoint = local.cluster_endpoint
+  machine_secrets  = talos_machine_secrets.this.machine_secrets
+  config_patches = [
+    yamlencode({
+      machine = {
+        install = {
+          # Image Factory installer with qemu-guest-agent extension
+          image = var.talos_installer_image
+        }
+        network = {
+          interfaces = [
+            {
+              interface = "ens18"
+              addresses = ["${local.worker_ips[count.index]}/${local.network_prefix_length}"]
+              routes = [
+                {
+                  network = "0.0.0.0/0"
+                  gateway = var.gateway
+                }
+              ]
+            }
+          ]
+          nameservers = var.nameservers
+        }
+      }
+    })
+  ]
 }
 
-output "cluster_vip" {
-  description = "Virtual IP for control plane (empty if not configured)"
-  value       = var.cluster_vip
-}
+# Apply machine configuration to each worker node (after cluster bootstrap)
+resource "talos_machine_configuration_apply" "worker" {
+  count      = var.worker_count
+  depends_on = [talos_machine_bootstrap.this]
 
-output "cluster_endpoint" {
-  description = "Kubernetes API endpoint URL"
-  value       = local.cluster_endpoint
+  client_configuration        = talos_machine_secrets.this.client_configuration
+  machine_configuration_input = data.talos_machine_configuration.worker[count.index].machine_configuration
+  # Connect using the DHCP IP from Proxmox, config will set static IP
+  node = proxmox_vm_qemu.talos_worker[count.index].default_ipv4_address
 }

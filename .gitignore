@@ -13,3 +13,9 @@ override.tf.json
 # Sensitive credentials
 kubeconfig.yaml
 talosconfig.yaml
+
+# Development/IDE
+.claude/
+.specify/
+specs/
+CLAUDE.md

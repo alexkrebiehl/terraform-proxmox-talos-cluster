@@ -4,6 +4,12 @@ output "kubeconfig_yaml" {
   sensitive   = true
 }
 
+output "talosconfig_yaml" {
+  description = "Talosconfig for talosctl access"
+  value       = data.talos_client_configuration.this.talos_config
+  sensitive   = true
+}
+
 output "cp_ip_addresses" {
   description = "IP addresses of control plane nodes"
   value       = local.cp_ips

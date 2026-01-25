@@ -153,18 +153,6 @@ resource "talos_cluster_kubeconfig" "this" {
   node                 = local.cp_ips[0]
 }
 
-resource "local_file" "kubeconfig" {
-  filename        = "${path.module}/kubeconfig.yaml"
-  content         = talos_cluster_kubeconfig.this.kubeconfig_raw
-  file_permission = "0600"
-}
-
-resource "local_file" "talosconfig" {
-  filename        = "${path.module}/talosconfig.yaml"
-  content         = data.talos_client_configuration.this.talos_config
-  file_permission = "0600"
-}
-
 # =============================================================================
 # Worker Nodes
 # =============================================================================

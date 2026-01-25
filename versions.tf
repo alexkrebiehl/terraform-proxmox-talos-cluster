@@ -13,10 +13,6 @@ terraform {
       source  = "ubiquiti-community/unifi"
       version = "~> 0.41"
     }
-    local = {
-      source  = "hashicorp/local"
-      version = "~> 2.5"
-    }
     time = {
       source  = "hashicorp/time"
       version = "~> 0.9"

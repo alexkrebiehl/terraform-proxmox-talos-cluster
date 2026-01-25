@@ -1,11 +1,12 @@
 locals {
-  cluster_name = "rancher-local-gen3"
-  node_ip      = proxmox_vm_qemu.talos_cp.default_ipv4_address
+  node_ips         = [for vm in proxmox_vm_qemu.talos_cp : vm.default_ipv4_address]
+  cluster_endpoint = "https://${local.node_ips[0]}:6443"
 }
 
-# Proxmox VM for Talos control plane
+# Proxmox VMs for Talos control plane
 resource "proxmox_vm_qemu" "talos_cp" {
-  name        = local.cluster_name
+  count       = var.node_count
+  name        = "${var.cluster_name}-cp-${count.index + 1}"
   target_node = "pve"
 
   agent         = 1
@@ -14,10 +15,12 @@ resource "proxmox_vm_qemu" "talos_cp" {
   scsihw        = "virtio-scsi-pci"
   boot          = "order=scsi0;ide2"
 
+  skip_ipv6 = true
+
   cpu {
-    cores = 4
+    cores = var.node_cpu_cores
   }
-  memory = 8192
+  memory = var.node_memory
 
   network {
     id       = 0
@@ -30,7 +33,7 @@ resource "proxmox_vm_qemu" "talos_cp" {
   disk {
     type    = "disk"
     storage = "vm-data"
-    size    = "40G"
+    size    = var.node_disk_size
     slot    = "scsi0"
   }
 
@@ -49,35 +52,47 @@ resource "proxmox_vm_qemu" "talos_cp" {
 # Talos machine secrets
 resource "talos_machine_secrets" "this" {}
 
-# Generate machine configuration (DHCP, no static IP needed)
+# Generate machine configuration for each control plane node
 data "talos_machine_configuration" "cp" {
-  cluster_name     = local.cluster_name
+  count            = var.node_count
+  cluster_name     = var.cluster_name
   machine_type     = "controlplane"
-  cluster_endpoint = "https://${local.node_ip}:6443"
+  cluster_endpoint = local.cluster_endpoint
   machine_secrets  = talos_machine_secrets.this.machine_secrets
+  config_patches = [
+    yamlencode({
+      machine = {
+        install = {
+          # Image Factory installer with qemu-guest-agent extension
+          image = "factory.talos.dev/installer/ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515:v1.12.0"
+        }
+      }
+    })
+  ]
 }
 
 # Client configuration for talosctl
 data "talos_client_configuration" "this" {
-  cluster_name         = local.cluster_name
+  cluster_name         = var.cluster_name
   client_configuration = talos_machine_secrets.this.client_configuration
-  nodes                = [local.node_ip]
-  endpoints            = [local.node_ip]
+  nodes                = local.node_ips
+  endpoints            = local.node_ips
 }
 
-# Apply machine configuration to control plane
+# Apply machine configuration to each control plane node
 resource "talos_machine_configuration_apply" "cp" {
+  count                       = var.node_count
   client_configuration        = talos_machine_secrets.this.client_configuration
-  machine_configuration_input = data.talos_machine_configuration.cp.machine_configuration
-  node                        = local.node_ip
+  machine_configuration_input = data.talos_machine_configuration.cp[count.index].machine_configuration
+  node                        = local.node_ips[count.index]
 }
 
-# Bootstrap the cluster
+# Bootstrap the cluster (only from first node, after all nodes configured)
 resource "talos_machine_bootstrap" "this" {
   depends_on = [talos_machine_configuration_apply.cp]
 
   client_configuration = talos_machine_secrets.this.client_configuration
-  node                 = local.node_ip
+  node                 = local.node_ips[0]
 }
 
 # Get kubeconfig
@@ -85,7 +100,7 @@ resource "talos_cluster_kubeconfig" "this" {
   depends_on = [talos_machine_bootstrap.this]
 
   client_configuration = talos_machine_secrets.this.client_configuration
-  node                 = local.node_ip
+  node                 = local.node_ips[0]
 }
 
 resource "local_file" "kubeconfig" {
@@ -105,6 +120,6 @@ output "kubeconfig_yaml" {
   sensitive = true
 }
 
-output "vm_ip_address" {
-  value = local.node_ip
+output "vm_ip_addresses" {
+  value = local.node_ips
 }

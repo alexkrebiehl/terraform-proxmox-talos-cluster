@@ -21,21 +21,6 @@ provider "registry.terraform.io/hashicorp/local" {
   ]
 }
 
-provider "registry.terraform.io/rancher/rke" {
-  version     = "1.7.5"
-  constraints = "~> 1.7"
-  hashes = [
-    "h1:eilzKRmdCnBoXBoDmtPybJlTP4iD6lIdVIUaTqDbv50=",
-    "zh:0ccb216eb0439bfd652063cdf6da938b3a3d480f62e1f8066d1d9db9799857b8",
-    "zh:46d6e899e3a554097ec19f1a87f2f7bad4444b8d60f3b18c8bb025485387522d",
-    "zh:99a11d34787d999f9394c0d8266d2bd2c6dfbf2544bc093afc41187ba565964c",
-    "zh:a4009da7010fd8998020afd9d8a09602d78deec0588eae5d202fc683698c3b92",
-    "zh:c5a0a32f9a761b1e41629511d75a8142c34074c321beb14635d43b7ec3f74d49",
-    "zh:d2e296ffa52e19ea41d0aa5592860364d2a99b07e88b78d235c5b0790b73507e",
-    "zh:eaf06774f1e74f12ffd03aba6b30db3ca7ccfb2d27f9266eb8803cf3fee6d4b1",
-  ]
-}
-
 provider "registry.terraform.io/siderolabs/talos" {
   version     = "0.10.1"
   constraints = "~> 0.7"

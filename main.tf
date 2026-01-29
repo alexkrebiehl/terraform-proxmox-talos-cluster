@@ -52,7 +52,7 @@ resource "proxmox_vm_qemu" "talos_cp" {
   # Boot disk
   disk {
     type    = "disk"
-    storage = "vm-data"
+    storage = var.disk_storage
     size    = var.cp_disk_size
     slot    = "scsi0"
   }
@@ -187,7 +187,7 @@ resource "proxmox_vm_qemu" "talos_worker" {
   # Boot disk
   disk {
     type    = "disk"
-    storage = "vm-data"
+    storage = var.disk_storage
     size    = var.worker_disk_size
     slot    = "scsi0"
   }

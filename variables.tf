@@ -8,6 +8,12 @@ variable "proxmox_node" {
   default     = "pve"
 }
 
+variable "disk_storage" {
+  description = "Proxmox storage pool for VM disks"
+  type        = string
+  default     = "vm-data"
+}
+
 # =============================================================================
 # Talos Configuration
 # =============================================================================

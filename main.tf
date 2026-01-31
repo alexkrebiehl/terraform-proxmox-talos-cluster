@@ -82,6 +82,7 @@ data "talos_machine_configuration" "cp" {
   config_patches = [
     yamlencode({
       machine = {
+        nodeLabels = local.node_labels
         install = {
           # Image Factory installer with qemu-guest-agent extension
           image = var.talos_installer_image
@@ -214,6 +215,7 @@ data "talos_machine_configuration" "worker" {
   config_patches = [
     yamlencode({
       machine = {
+        nodeLabels = local.node_labels
         install = {
           # Image Factory installer with qemu-guest-agent extension
           image = var.talos_installer_image

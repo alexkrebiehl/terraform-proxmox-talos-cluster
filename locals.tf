@@ -20,4 +20,13 @@ locals {
 
   # Talosctl endpoints include VIP as primary when available
   talos_endpoints = local.vip_enabled ? concat([var.cluster_vip], local.cp_ips) : local.cp_ips
+
+  # Merge default topology labels with custom node labels
+  node_labels = merge(
+    {
+      "topology.kubernetes.io/region" = var.cluster_name
+      "topology.kubernetes.io/zone"   = var.proxmox_node
+    },
+    var.node_labels
+  )
 }

@@ -105,6 +105,12 @@ variable "worker_disk_size" {
   default     = "40G"
 }
 
+variable "node_labels" {
+  description = "Kubernetes node labels to apply to all nodes (both control plane and workers)"
+  type        = map(string)
+  default     = {}
+}
+
 # Network configuration
 variable "vlan_id" {
   description = "VLAN ID for the Talos cluster network"

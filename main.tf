@@ -82,7 +82,12 @@ data "talos_machine_configuration" "cp" {
   config_patches = [
     yamlencode({
       machine = {
-        nodeLabels = local.node_labels
+        kubelet = {
+          extraArgs = {
+            # Required for Proxmox CCM integration
+            "cloud-provider" = "external"
+          }
+        }
         install = {
           # Image Factory installer with qemu-guest-agent extension
           image = var.talos_installer_image
@@ -106,11 +111,44 @@ data "talos_machine_configuration" "cp" {
           nameservers = var.nameservers
         }
       }
-      cluster = local.vip_enabled ? {
-        apiServer = {
-          certSANs = [var.cluster_vip]
+      cluster = {
+        inlineManifests = [
+          {
+            name : "proxmox-cloud-controller-manager",
+            contents : <<EOF
+apiVersion: v1
+kind: Secret
+type: Opaque
+metadata:
+  name: proxmox-cloud-controller-manager
+  namespace: kube-system
+stringData:
+  config.yaml: |
+    clusters:
+      - url: ${var.proxmox_ccm_url}
+        insecure: ${var.proxmox_ccm_insecure}
+        token_id: "${var.proxmox_ccm_token_id}"
+        token_secret: "${var.proxmox_ccm_token_secret}"
+        region: ${var.proxmox_ccm_region}
+EOF
+          },
+        ]
+        externalCloudProvider = {
+          enabled = true
+          manifests = [
+            "https://raw.githubusercontent.com/sergelogvinov/proxmox-cloud-controller-manager/${var.proxmox_ccm_version}/docs/deploy/cloud-controller-manager.yml",
+          ]
         }
-      } : {}
+        apiServer = local.vip_enabled ? {
+          certSANs = [var.cluster_vip]
+        } : null
+      }
+    }),
+    yamlencode({
+      apiVersion = "v1alpha1"
+      kind       = "HostnameConfig"
+      hostname   = "${var.cluster_name}-cp-${count.index + 1}"
+      auto       = "off"
     })
   ]
 }
@@ -215,7 +253,12 @@ data "talos_machine_configuration" "worker" {
   config_patches = [
     yamlencode({
       machine = {
-        nodeLabels = local.node_labels
+        kubelet = {
+          extraArgs = {
+            # Required for Proxmox CCM integration
+            "cloud-provider" = "external"
+          }
+        }
         install = {
           # Image Factory installer with qemu-guest-agent extension
           image = var.talos_installer_image
@@ -236,6 +279,12 @@ data "talos_machine_configuration" "worker" {
           nameservers = var.nameservers
         }
       }
+    }),
+    yamlencode({
+      apiVersion = "v1alpha1"
+      kind       = "HostnameConfig"
+      hostname   = "${var.cluster_name}-worker-${count.index + 1}"
+      auto       = "off"
     })
   ]
 }

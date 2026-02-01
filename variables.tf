@@ -15,6 +15,43 @@ variable "disk_storage" {
 }
 
 # =============================================================================
+# Proxmox Cloud Controller Manager Configuration
+# =============================================================================
+
+variable "proxmox_ccm_url" {
+  description = "Proxmox API URL for Cloud Controller Manager (e.g., https://cluster-api-1.example.com:8006/api2/json)"
+  type        = string
+}
+
+variable "proxmox_ccm_insecure" {
+  description = "Skip TLS verification for Proxmox API connection"
+  type        = bool
+  default     = false
+}
+
+variable "proxmox_ccm_token_id" {
+  description = "Proxmox API token ID for Cloud Controller Manager (e.g., kubernetes@pve!ccm)"
+  type        = string
+}
+
+variable "proxmox_ccm_token_secret" {
+  description = "Proxmox API token secret for Cloud Controller Manager"
+  type        = string
+  sensitive   = true
+}
+
+variable "proxmox_ccm_region" {
+  description = "Region identifier for Proxmox Cloud Controller Manager"
+  type        = string
+}
+
+variable "proxmox_ccm_version" {
+  description = "Version of the Proxmox Cloud Controller Manager to deploy"
+  type        = string
+  default     = "v0.13.0"
+}
+
+# =============================================================================
 # Talos Configuration
 # =============================================================================
 
@@ -103,12 +140,6 @@ variable "worker_disk_size" {
   description = "Boot disk size per worker node"
   type        = string
   default     = "40G"
-}
-
-variable "node_labels" {
-  description = "Kubernetes node labels to apply to all nodes (both control plane and workers)"
-  type        = map(string)
-  default     = {}
 }
 
 # Network configuration

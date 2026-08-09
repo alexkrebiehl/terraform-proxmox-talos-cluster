@@ -67,6 +67,7 @@ calling root module.
 | --- | --- | --- | --- |
 | `proxmox_node` | `string` | `"pve"` | Proxmox node to deploy VMs on |
 | `disk_storage` | `string` | `"vm-data"` | Proxmox storage pool for VM disks |
+| `start_at_node_boot` | `bool` | `true` | Start cluster VMs automatically when the Proxmox node boots |
 | `talos_iso` | `string` | `local:iso/talos-v1.12.2-…-amd64.iso` | Proxmox ISO path for the Talos boot image |
 | `talos_installer_image` | `string` | Image Factory image w/ qemu-guest-agent | Talos installer image |
 

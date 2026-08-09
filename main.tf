@@ -28,11 +28,12 @@ resource "proxmox_vm_qemu" "talos_cp" {
   name        = "${var.cluster_name}-cp-${count.index + 1}"
   target_node = var.proxmox_node
 
-  agent         = 1
-  agent_timeout = 120
-  qemu_os       = "l26"
-  scsihw        = "virtio-scsi-pci"
-  boot          = "order=scsi0;ide2"
+  agent              = 1
+  agent_timeout      = 120
+  qemu_os            = "l26"
+  scsihw             = "virtio-scsi-pci"
+  boot               = "order=scsi0;ide2"
+  start_at_node_boot = var.start_at_node_boot
 
   skip_ipv6 = true
 
@@ -200,11 +201,12 @@ resource "proxmox_vm_qemu" "talos_worker" {
   name        = "${var.cluster_name}-worker-${count.index + 1}"
   target_node = var.proxmox_node
 
-  agent         = 1
-  agent_timeout = 120
-  qemu_os       = "l26"
-  scsihw        = "virtio-scsi-pci"
-  boot          = "order=scsi0;ide2"
+  agent              = 1
+  agent_timeout      = 120
+  qemu_os            = "l26"
+  scsihw             = "virtio-scsi-pci"
+  boot               = "order=scsi0;ide2"
+  start_at_node_boot = var.start_at_node_boot
 
   skip_ipv6 = true
 

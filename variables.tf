@@ -14,6 +14,12 @@ variable "disk_storage" {
   default     = "vm-data"
 }
 
+variable "start_at_node_boot" {
+  description = "Start cluster VMs automatically when the Proxmox node boots"
+  type        = bool
+  default     = true
+}
+
 # =============================================================================
 # Proxmox Cloud Controller Manager Configuration
 # =============================================================================

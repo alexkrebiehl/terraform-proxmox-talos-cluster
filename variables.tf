@@ -210,3 +210,25 @@ variable "network_dhcp_stop" {
   type        = number
   default     = 250
 }
+
+# =============================================================================
+# Metrics Server Configuration
+# =============================================================================
+
+variable "metrics_server_enabled" {
+  description = "Deploy metrics-server and the kubelet serving certificate approver it requires"
+  type        = bool
+  default     = true
+}
+
+variable "metrics_server_version" {
+  description = "Version of metrics-server to deploy"
+  type        = string
+  default     = "v0.9.0"
+}
+
+variable "kubelet_serving_cert_approver_version" {
+  description = "Version of the kubelet serving certificate approver to deploy"
+  type        = string
+  default     = "v0.11.0"
+}

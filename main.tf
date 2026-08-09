@@ -83,10 +83,7 @@ data "talos_machine_configuration" "cp" {
     yamlencode({
       machine = {
         kubelet = {
-          extraArgs = {
-            # Required for Proxmox CCM integration
-            "cloud-provider" = "external"
-          }
+          extraArgs = local.kubelet_extra_args
         }
         install = {
           # Image Factory installer with qemu-guest-agent extension
@@ -139,6 +136,7 @@ EOF
             "https://raw.githubusercontent.com/sergelogvinov/proxmox-cloud-controller-manager/${var.proxmox_ccm_version}/docs/deploy/cloud-controller-manager.yml",
           ]
         }
+        extraManifests = local.metrics_server_manifests
         apiServer = local.vip_enabled ? {
           certSANs = [var.cluster_vip]
         } : null
@@ -254,10 +252,7 @@ data "talos_machine_configuration" "worker" {
     yamlencode({
       machine = {
         kubelet = {
-          extraArgs = {
-            # Required for Proxmox CCM integration
-            "cloud-provider" = "external"
-          }
+          extraArgs = local.kubelet_extra_args
         }
         install = {
           # Image Factory installer with qemu-guest-agent extension

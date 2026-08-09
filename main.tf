@@ -165,8 +165,11 @@ resource "talos_machine_configuration_apply" "cp" {
   count                       = var.cp_count
   client_configuration        = talos_machine_secrets.this.client_configuration
   machine_configuration_input = data.talos_machine_configuration.cp[count.index].machine_configuration
-  # Connect using the DHCP IP from Proxmox, config will set static IP
-  node = proxmox_vm_qemu.talos_cp[count.index].default_ipv4_address
+  # Connect using the DHCP IP reported by the qemu-guest-agent during initial
+  # bring-up, falling back to the static IP the config assigns. The fallback
+  # matters once the node is running: if the guest agent stops reporting,
+  # Proxmox returns an empty address and the node is already on its static IP.
+  node = coalesce(proxmox_vm_qemu.talos_cp[count.index].default_ipv4_address, local.cp_ips[count.index])
 }
 
 # Wait for nodes to switch to static IPs after config apply
@@ -293,6 +296,7 @@ resource "talos_machine_configuration_apply" "worker" {
 
   client_configuration        = talos_machine_secrets.this.client_configuration
   machine_configuration_input = data.talos_machine_configuration.worker[count.index].machine_configuration
-  # Connect using the DHCP IP from Proxmox, config will set static IP
-  node = proxmox_vm_qemu.talos_worker[count.index].default_ipv4_address
+  # Connect using the DHCP IP from Proxmox, falling back to the static IP
+  # (see the control plane equivalent above)
+  node = coalesce(proxmox_vm_qemu.talos_worker[count.index].default_ipv4_address, local.worker_ips[count.index])
 }

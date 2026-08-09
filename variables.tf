@@ -68,9 +68,9 @@ variable "talos_iso" {
 }
 
 variable "talos_installer_image" {
-  description = "Talos installer image from Image Factory (includes extensions)"
+  description = "Talos installer image from Image Factory (includes extensions). Keep the version in sync with talos_iso."
   type        = string
-  default     = "factory.talos.dev/installer/ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515:v1.12.0"
+  default     = "factory.talos.dev/installer/ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515:v1.12.2"
 }
 
 variable "cp_cpu_cores" {

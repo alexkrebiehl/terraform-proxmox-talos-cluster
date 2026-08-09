@@ -69,7 +69,14 @@ calling root module.
 | `disk_storage` | `string` | `"vm-data"` | Proxmox storage pool for VM disks |
 | `start_at_node_boot` | `bool` | `true` | Start cluster VMs automatically when the Proxmox node boots |
 | `talos_iso` | `string` | `local:iso/talos-v1.12.2-…-amd64.iso` | Proxmox ISO path for the Talos boot image |
-| `talos_installer_image` | `string` | Image Factory image w/ qemu-guest-agent | Talos installer image |
+| `talos_installer_image` | `string` | Image Factory image w/ qemu-guest-agent | Talos installer image (keep its version in sync with `talos_iso`) |
+
+> **System extensions come from `talos_installer_image`, not the ISO.** Talos consumes
+> `machine.install.image` only at install time or during `talosctl upgrade` — re-applying a machine
+> configuration never reinstalls a running node. A node installed before this value was set keeps a
+> stock image, and no amount of `terraform apply` will add the qemu-guest-agent extension to it. Check
+> with `talosctl -n <ip> get extensions`; fix an affected node with
+> `talosctl -n <ip> upgrade --image <talos_installer_image>`, one node at a time.
 
 ### Node sizing
 

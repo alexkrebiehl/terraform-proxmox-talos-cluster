@@ -110,13 +110,24 @@ variable "worker_pools" {
 
     # Talos expects "value:Effect", e.g. { gpu = "amd:NoSchedule" }.
     #
-    # WARNING: this does not work on worker nodes in a default cluster. The
+    # WARNING 1: this does not work on worker nodes in a default cluster. The
     # NodeRestriction admission plugin forbids a node from tainting itself
     # ("node X is forbidden: node is not allowed to modify taints"), and that
     # error aborts Talos's NodeApplyController mid-reconcile, so it crash-loops
     # and never applies node_labels either -- you lose both, silently.
-    # Prefer node_labels here and apply taints from the control plane with
-    # `kubectl taint`.
+    #
+    # WARNING 2: tainting a pool at all is more disruptive than it looks.
+    # Cluster daemonsets rarely tolerate arbitrary taints -- proxmox-csi-plugin
+    # tolerates only unschedulable/disk-pressure, metallb-speaker only
+    # master/control-plane -- so a taint quietly removes them from the node.
+    # Losing the CSI node plugin means the node cannot mount any volume, and
+    # workloads moved there fail at mount time rather than at scheduling time.
+    # Worse, NoSchedule does not evict running pods, so nothing breaks until
+    # the node is next restarted.
+    #
+    # Prefer node_labels plus a nodeSelector. If a pool genuinely must be
+    # reserved, add matching tolerations to every cluster daemonset in the
+    # same change.
     node_taints = optional(map(string), {})
 
     # Names of Proxmox cluster PCI resource mappings to attach, in order.

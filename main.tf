@@ -300,3 +300,152 @@ resource "talos_machine_configuration_apply" "worker" {
   # (see the control plane equivalent above)
   node = coalesce(proxmox_vm_qemu.talos_worker[count.index].default_ipv4_address, local.worker_ips[count.index])
 }
+
+# =============================================================================
+# Worker Pools
+# =============================================================================
+#
+# Additional worker pools defined by var.worker_pools. These are separate from
+# the count-based talos_worker resource above so that adding a pool never
+# rewrites state for the existing workers.
+#
+# A pool may pin its own Talos image, so a pool that needs system extensions
+# (e.g. amdgpu for a passed-through GPU) does not force those extensions onto
+# the rest of the cluster.
+
+resource "proxmox_vm_qemu" "talos_worker_pool" {
+  for_each    = local.worker_pool_nodes
+  name        = each.value.name
+  target_node = var.proxmox_node
+
+  agent              = 1
+  agent_timeout      = 120
+  qemu_os            = "l26"
+  scsihw             = "virtio-scsi-pci"
+  boot               = "order=scsi0;ide2"
+  start_at_node_boot = var.start_at_node_boot
+
+  skip_ipv6 = true
+
+  # PCI passthrough needs q35 + OVMF. Pools without passthrough leave these at
+  # the same defaults as the existing workers.
+  machine = each.value.machine
+  bios    = each.value.bios
+
+  cpu {
+    cores = each.value.cpu_cores
+  }
+  memory = each.value.memory
+
+  network {
+    id       = 0
+    bridge   = "vmbr0"
+    model    = "virtio"
+    firewall = false
+    tag      = unifi_virtual_network.talos.vlan
+  }
+
+  # Boot disk
+  disk {
+    type    = "disk"
+    storage = var.disk_storage
+    size    = each.value.disk_size
+    slot    = "scsi0"
+  }
+
+  # Talos ISO
+  disk {
+    type = "cdrom"
+    iso  = each.value.iso
+    slot = "ide2"
+  }
+
+  # UEFI variable store, required when bios = "ovmf".
+  dynamic "efidisk" {
+    for_each = each.value.bios == "ovmf" ? [1] : []
+    content {
+      storage = var.disk_storage
+      efitype = "4m"
+    }
+  }
+
+  # Passed-through PCI devices, addressed by Proxmox resource mapping name.
+  # primary_gpu stays false: these are headless compute devices, not consoles.
+  dynamic "pci" {
+    for_each = each.value.pci_mappings
+    content {
+      id          = pci.key
+      mapping_id  = pci.value
+      pcie        = true
+      rombar      = true
+      primary_gpu = false
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [boot, disk, startup_shutdown]
+  }
+}
+
+# Generate machine configuration for each worker pool node
+data "talos_machine_configuration" "worker_pool" {
+  for_each         = local.worker_pool_nodes
+  cluster_name     = var.cluster_name
+  machine_type     = "worker"
+  cluster_endpoint = local.cluster_endpoint
+  machine_secrets  = talos_machine_secrets.this.machine_secrets
+  config_patches = [
+    yamlencode({
+      machine = merge(
+        {
+          kubelet = {
+            extraArgs = local.kubelet_extra_args
+          }
+          install = {
+            # Pool-specific Image Factory installer, falling back to the
+            # cluster-wide image when the pool does not override it.
+            image = each.value.installer_image
+          }
+          network = {
+            interfaces = [
+              {
+                interface = "ens18"
+                addresses = ["${each.value.ip}/${local.network_prefix_length}"]
+                routes = [
+                  {
+                    network = "0.0.0.0/0"
+                    gateway = var.gateway
+                  }
+                ]
+              }
+            ]
+            nameservers = var.nameservers
+          }
+        },
+        length(each.value.node_labels) > 0 ? { nodeLabels = each.value.node_labels } : {},
+        length(each.value.node_taints) > 0 ? { nodeTaints = each.value.node_taints } : {},
+        length(each.value.kernel_modules) > 0 ? {
+          kernel = { modules = [for m in each.value.kernel_modules : { name = m }] }
+        } : {},
+      )
+    }),
+    yamlencode({
+      apiVersion = "v1alpha1"
+      kind       = "HostnameConfig"
+      hostname   = each.value.name
+      auto       = "off"
+    })
+  ]
+}
+
+# Apply machine configuration to each worker pool node (after cluster bootstrap)
+resource "talos_machine_configuration_apply" "worker_pool" {
+  for_each   = local.worker_pool_nodes
+  depends_on = [talos_machine_bootstrap.this]
+
+  client_configuration        = talos_machine_secrets.this.client_configuration
+  machine_configuration_input = data.talos_machine_configuration.worker_pool[each.key].machine_configuration
+  # Connect using the DHCP IP from Proxmox, falling back to the static IP
+  # (see the control plane equivalent above)
+  node = coalesce(proxmox_vm_qemu.talos_worker_pool[each.key].default_ipv4_address, each.value.ip)
+}

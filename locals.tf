@@ -12,6 +12,32 @@ locals {
   # Generate worker IPs using cidrhost()
   worker_ips = [for i in range(var.worker_count) : cidrhost(var.network_cidr, local.worker_first_host + i)]
 
+  # Flatten worker_pools into one node per entry, keyed "<pool>-<n>".
+  # Each node carries its pool's settings plus its computed static IP, so the
+  # VM resource and the machine config can both key off the same map.
+  worker_pool_nodes = merge([
+    for pool_name, pool in var.worker_pools : {
+      for i in range(pool.count) :
+      "${pool_name}-${i + 1}" => {
+        pool_name       = pool_name
+        index           = i
+        name            = "${var.cluster_name}-${pool_name}-${i + 1}"
+        ip              = cidrhost(var.network_cidr, tonumber(split(".", pool.first_ip)[3]) + i)
+        cpu_cores       = pool.cpu_cores
+        memory          = pool.memory
+        disk_size       = pool.disk_size
+        machine         = pool.machine
+        bios            = pool.bios
+        iso             = coalesce(pool.iso, var.talos_iso)
+        installer_image = coalesce(pool.installer_image, var.talos_installer_image)
+        node_labels     = pool.node_labels
+        node_taints     = pool.node_taints
+        pci_mappings    = pool.pci_mappings
+        kernel_modules  = pool.kernel_modules
+      }
+    }
+  ]...)
+
   # VIP configuration
   vip_enabled = var.cluster_vip != null && var.cluster_vip != ""
 

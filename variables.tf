@@ -73,6 +73,70 @@ variable "talos_installer_image" {
   default     = "factory.talos.dev/installer/ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515:v1.12.2"
 }
 
+# =============================================================================
+# Worker Pools
+# =============================================================================
+
+# Additional worker pools, on top of the count-based worker_count pool above.
+# Each pool is independent: its own sizing, IP range, Talos image, node labels
+# and taints, and optional Proxmox PCI passthrough.
+#
+# The legacy worker_count pool is intentionally left alone. Migrating it from
+# count to for_each would rewrite state for a node that carries dynamically
+# attached CSI volumes Terraform does not manage, for no benefit today.
+variable "worker_pools" {
+  description = "Additional worker pools, keyed by pool name."
+  type = map(object({
+    count     = number
+    cpu_cores = number
+    memory    = number
+    disk_size = string
+
+    # First IP of the pool's contiguous range. Must not overlap the control
+    # plane range, the worker_count range, MetalLB, or the DHCP range.
+    first_ip = string
+
+    # Override the cluster-wide Talos image for this pool only. Use when a pool
+    # needs system extensions the rest of the cluster does not (e.g. amdgpu).
+    installer_image = optional(string)
+    iso             = optional(string)
+
+    # PCI passthrough wants q35 + OVMF. Defaults match the rest of the cluster
+    # so a plain pool behaves exactly like the existing workers.
+    machine = optional(string, "")
+    bios    = optional(string, "seabios")
+
+    node_labels = optional(map(string), {})
+
+    # Talos expects "value:Effect", e.g. { gpu = "amd:NoSchedule" }
+    node_taints = optional(map(string), {})
+
+    # Names of Proxmox cluster PCI resource mappings to attach, in order.
+    # Mappings are referenced by name rather than raw BDF so the config
+    # survives PCI renumbering on the host.
+    pci_mappings = optional(list(string), [])
+
+    # Kernel modules Talos should load on these nodes, e.g. ["amdgpu"].
+    kernel_modules = optional(list(string), [])
+  }))
+  default = {}
+
+  validation {
+    condition     = alltrue([for k, v in var.worker_pools : length(v.pci_mappings) <= 16])
+    error_message = "A worker pool can attach at most 16 PCI mappings."
+  }
+
+  validation {
+    condition     = alltrue([for k, v in var.worker_pools : v.count <= 1 if length(v.pci_mappings) > 0])
+    error_message = "A pool with PCI passthrough must have count = 1: a passed-through device cannot be shared between VMs."
+  }
+
+  validation {
+    condition     = alltrue([for k, v in var.worker_pools : can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}$", v.first_ip))])
+    error_message = "Each worker pool's first_ip must be a valid IPv4 address."
+  }
+}
+
 variable "cp_cpu_cores" {
   description = "Number of CPU cores per control plane node"
   type        = number

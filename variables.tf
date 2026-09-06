@@ -108,7 +108,15 @@ variable "worker_pools" {
 
     node_labels = optional(map(string), {})
 
-    # Talos expects "value:Effect", e.g. { gpu = "amd:NoSchedule" }
+    # Talos expects "value:Effect", e.g. { gpu = "amd:NoSchedule" }.
+    #
+    # WARNING: this does not work on worker nodes in a default cluster. The
+    # NodeRestriction admission plugin forbids a node from tainting itself
+    # ("node X is forbidden: node is not allowed to modify taints"), and that
+    # error aborts Talos's NodeApplyController mid-reconcile, so it crash-loops
+    # and never applies node_labels either -- you lose both, silently.
+    # Prefer node_labels here and apply taints from the control plane with
+    # `kubectl taint`.
     node_taints = optional(map(string), {})
 
     # Names of Proxmox cluster PCI resource mappings to attach, in order.

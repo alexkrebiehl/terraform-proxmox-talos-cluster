@@ -9,10 +9,6 @@ terraform {
       source  = "siderolabs/talos"
       version = "0.10.1"
     }
-    unifi = {
-      source  = "ubiquiti-community/unifi"
-      version = "~> 0.41"
-    }
     time = {
       source  = "hashicorp/time"
       version = "~> 0.9"

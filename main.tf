@@ -1,22 +1,9 @@
 # =============================================================================
-# Unifi Network Configuration
+# Network
 # =============================================================================
-
-# Create dedicated VLAN network for Talos cluster
-resource "unifi_virtual_network" "talos" {
-  name         = "${var.cluster_name}-network"
-  subnet       = var.network_cidr
-  vlan         = var.vlan_id
-  enabled      = true
-  vlan_enabled = true
-
-  dhcp_server = {
-    enabled     = true
-    start       = cidrhost(var.network_cidr, var.network_dhcp_start)
-    stop        = cidrhost(var.network_cidr, var.network_dhcp_stop)
-    dns_servers = var.nameservers
-  }
-}
+#
+# The cluster VLAN is NOT managed here: it must already exist in UniFi. See
+# "Networking prerequisites" in README.md for what it needs and why.
 
 # =============================================================================
 # Proxmox VMs for Talos Control Plane
@@ -47,7 +34,7 @@ resource "proxmox_vm_qemu" "talos_cp" {
     bridge   = "vmbr0"
     model    = "virtio"
     firewall = false
-    tag      = unifi_virtual_network.talos.vlan
+    tag      = var.vlan_id
   }
 
   # Boot disk
@@ -223,7 +210,7 @@ resource "proxmox_vm_qemu" "talos_worker" {
     bridge   = "vmbr0"
     model    = "virtio"
     firewall = false
-    tag      = unifi_virtual_network.talos.vlan
+    tag      = var.vlan_id
   }
 
   # Boot disk
@@ -342,7 +329,7 @@ resource "proxmox_vm_qemu" "talos_worker_pool" {
     bridge   = "vmbr0"
     model    = "virtio"
     firewall = false
-    tag      = unifi_virtual_network.talos.vlan
+    tag      = var.vlan_id
   }
 
   # Boot disk

@@ -233,7 +233,7 @@ variable "worker_disk_size" {
 
 # Network configuration
 variable "vlan_id" {
-  description = "VLAN ID for the Talos cluster network"
+  description = "VLAN ID of the existing cluster network (see Networking prerequisites in README.md)"
   type        = number
 
   validation {
@@ -243,7 +243,7 @@ variable "vlan_id" {
 }
 
 variable "network_cidr" {
-  description = "Network CIDR for cluster nodes (e.g., 172.20.6.0/24)"
+  description = "CIDR of the existing cluster network (e.g., 172.20.6.0/24); must match the UniFi network for vlan_id"
   type        = string
 
   validation {
@@ -253,7 +253,7 @@ variable "network_cidr" {
 }
 
 variable "gateway" {
-  description = "Default gateway IP address (typically .1 of the network)"
+  description = "Default gateway IP of the existing cluster network (typically .1): the UniFi gateway or L3 switch that routes vlan_id"
   type        = string
 
   validation {
@@ -286,18 +286,6 @@ variable "nameservers" {
   description = "DNS nameservers for cluster nodes"
   type        = list(string)
   default     = ["172.21.21.21"]
-}
-
-variable "network_dhcp_start" {
-  description = "DHCP range start (host number within the subnet)"
-  type        = number
-  default     = 200
-}
-
-variable "network_dhcp_stop" {
-  description = "DHCP range stop (host number within the subnet)"
-  type        = number
-  default     = 250
 }
 
 # =============================================================================

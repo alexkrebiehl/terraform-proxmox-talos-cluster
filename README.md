@@ -4,9 +4,10 @@ Terraform module that provisions a Talos Linux Kubernetes cluster on Proxmox VE.
 
 ## Overview
 
-The module owns the full path from an empty Proxmox node to a working cluster:
+The module owns the path from a Proxmox node with a prepared network to a working cluster:
 
-- **Network** — a dedicated Unifi VLAN and virtual network with a DHCP range for node bring-up.
+- **Network** — attaches nodes to an existing VLAN; the network itself is created by hand in UniFi.
+  See [Networking prerequisites](#networking-prerequisites-manual-unifi).
 - **VMs** — Proxmox QEMU VMs for control plane and worker nodes, booted from a Talos ISO and
   installed with an Image Factory image that includes the qemu-guest-agent extension.
 - **Talos** — machine secrets, per-node machine configuration (static IPs, hostnames, optional
@@ -22,7 +23,7 @@ derived from `cp_first_ip` / `worker_first_ip`.
 
 ```hcl
 module "talos_cluster" {
-  source = "github.com/alexkrebiehl/terraform-proxmox-talos-cluster?ref=v1.3.0"
+  source = "github.com/alexkrebiehl/terraform-proxmox-talos-cluster?ref=v2.0.0"
 
   cluster_name = "talos-cluster"
   disk_storage = "zpool"
@@ -47,8 +48,60 @@ module "talos_cluster" {
 }
 ```
 
-The module expects the `proxmox`, `unifi`, `talos`, and `time` providers to be configured by the
-calling root module.
+The module expects the `proxmox`, `talos`, and `time` providers to be configured by the calling root
+module.
+
+## Networking prerequisites (manual, UniFi)
+
+The module does not create or manage the cluster network. Before the first `terraform apply`, set
+up the following by hand in the UniFi controller:
+
+- [ ] **Network.** A network with VLAN ID `vlan_id`, subnet `network_cidr`, and gateway IP `gateway`.
+- [ ] **DHCP.** DHCP is enabled on that network, with a range that does not overlap the control
+      plane IPs (`cp_first_ip`…), worker IPs (`worker_first_ip`…), any `worker_pools[*].first_ip`
+      range, or the MetalLB pool. New VMs boot the Talos ISO on DHCP; the module reads that lease
+      through the qemu-guest-agent to apply the machine config, which then moves each node to its
+      static IP. Hand out the same DNS servers as `nameservers`.
+- [ ] **Routing.** Either the UniFi gateway or an L3 switch can route the network. From it, nodes need:
+  - internet egress, for the Image Factory installer and the CCM and metrics-server manifests
+    fetched from GitHub
+  - a route to the Proxmox API (`proxmox_ccm_url`)
+  - a route to any NFS or storage servers workloads use
+
+  Prefer **switch routing** when storage lives on another switch-routed VLAN, so storage traffic
+  stays on the switch fabric instead of hairpinning through the gateway. Gateway firewall rules do
+  not apply between switch-routed networks.
+- [ ] **Physical path.** The Proxmox host's switch port carries the VLAN tagged, and `vmbr0` is
+      VLAN-aware (`bridge-vlan-aware yes`). The module attaches every NIC to `vmbr0` with
+      `tag = vlan_id`.
+- [ ] **Dependent objects.** Port forwards and static routes that point at cluster addresses
+      (e.g. WireGuard on a MetalLB IP) are also manual.
+
+### Why this is manual
+
+Up to v1.x the module created the network with the `ubiquiti-community/unifi` provider. That
+provider cannot manage a switch-routed network:
+
+- `unifi_network` has `gateway_type` but no `gateway_device` attribute (checked through v0.55.0).
+- go-unifi serialises `gateway_device` without `omitempty`, and updates are full-object PUTs, so
+  every create or update sends `"gateway_device": ""` and clears the switch assignment.
+
+Rather than half-manage the network, v2.0.0 removed it from Terraform. **TODO:** revisit once the
+provider supports `gateway_device` on `unifi_network` (upstream PR planned).
+
+### Upgrading from v1.x
+
+v1.x state contains `unifi_virtual_network.talos`. Remove it from state **before** switching the
+module ref, or Terraform will plan to destroy the live UniFi network:
+
+```bash
+terraform state pull > terraform.tfstate.pre-v2.backup
+terraform state rm 'module.<name>.unifi_virtual_network.talos'
+```
+
+Then bump the ref, delete the `unifi` provider block, required provider, and variables from the
+root module, drop `network_dhcp_start` / `network_dhcp_stop` arguments if you set them, and confirm
+`terraform plan` reports no changes.
 
 ## Inputs
 
@@ -93,14 +146,12 @@ calling root module.
 
 | Name | Type | Default | Description |
 | --- | --- | --- | --- |
-| `vlan_id` | `number` | _required_ | VLAN ID for the cluster network (1-4094) |
-| `network_cidr` | `string` | _required_ | Network CIDR for cluster nodes |
-| `gateway` | `string` | _required_ | Default gateway IP address |
+| `vlan_id` | `number` | _required_ | VLAN ID of the existing cluster network (1-4094) |
+| `network_cidr` | `string` | _required_ | CIDR of the existing cluster network |
+| `gateway` | `string` | _required_ | Gateway IP of the existing cluster network |
 | `cp_first_ip` | `string` | _required_ | First static IP for control plane nodes (auto-increments) |
 | `worker_first_ip` | `string` | _required_ | First static IP for worker nodes (auto-increments) |
 | `nameservers` | `list(string)` | `["172.21.21.21"]` | DNS nameservers for cluster nodes |
-| `network_dhcp_start` | `number` | `200` | DHCP range start (host number within the subnet) |
-| `network_dhcp_stop` | `number` | `250` | DHCP range stop (host number within the subnet) |
 
 ### Proxmox Cloud Controller Manager
 
@@ -180,5 +231,4 @@ metrics-server left running after disabling will fail its scrapes.
 | terraform | >= 1.5.5 |
 | Telmate/proxmox | 3.0.2-rc07 |
 | siderolabs/talos | 0.10.1 |
-| ubiquiti-community/unifi | ~> 0.41 |
 | hashicorp/time | ~> 0.9 |

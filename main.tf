@@ -60,6 +60,20 @@ resource "proxmox_vm_qemu" "talos_cp" {
 # Talos machine secrets
 resource "talos_machine_secrets" "this" {}
 
+# Upstream approver manifest, fetched so its resources can be patched before
+# it is inlined (see local.kubelet_serving_cert_approver_manifests)
+data "http" "kubelet_serving_cert_approver" {
+  count = var.metrics_server_enabled ? 1 : 0
+  url   = local.kubelet_serving_cert_approver_url
+
+  lifecycle {
+    postcondition {
+      condition     = self.status_code == 200 && strcontains(self.response_body, "kind: Deployment")
+      error_message = "Could not fetch the kubelet-serving-cert-approver manifest from ${local.kubelet_serving_cert_approver_url} (HTTP ${self.status_code}), or it no longer contains a Deployment to patch."
+    }
+  }
+}
+
 # Generate machine configuration for each control plane node
 data "talos_machine_configuration" "cp" {
   count            = var.cp_count
@@ -97,7 +111,7 @@ data "talos_machine_configuration" "cp" {
         }
       }
       cluster = {
-        inlineManifests = [
+        inlineManifests = concat([
           {
             name : "proxmox-cloud-controller-manager",
             contents : <<EOF
@@ -117,7 +131,7 @@ stringData:
         region: ${var.proxmox_ccm_region}
 EOF
           },
-        ]
+        ], local.kubelet_serving_cert_approver_manifests)
         externalCloudProvider = {
           enabled = true
           manifests = [

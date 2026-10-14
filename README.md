@@ -191,13 +191,22 @@ does both:
 1. Sets `rotate-server-certificates=true` in the kubelet `extraArgs` of **both** control plane and
    worker nodes, so kubelets serve certificates signed by the cluster CA. Without this they serve
    self-signed certificates that metrics-server refuses to scrape.
-2. Adds two `cluster.extraManifests` entries — the
+2. Deploys the
    [kubelet-serving-cert-approver](https://github.com/alex1989hu/kubelet-serving-cert-approver),
-   which auto-approves the kubelet serving CSRs that rotation creates, and
-   [metrics-server](https://github.com/kubernetes-sigs/metrics-server) itself.
+   which auto-approves the kubelet serving CSRs that rotation creates, as a
+   `cluster.inlineManifests` entry, and
+   [metrics-server](https://github.com/kubernetes-sigs/metrics-server) itself as a
+   `cluster.extraManifests` entry.
 
 Versions are pinned through `metrics_server_version` and `kubelet_serving_cert_approver_version`
 rather than tracking `latest`, so upgrades are an explicit change.
+
+The approver is inlined rather than referenced by URL because its upstream manifest limits it to
+32Mi of memory, which it outgrows at startup. The kernel then thrashes reclaiming and re-reading the
+binary's pages instead of OOM-killing it, so it starts too slowly for its liveness probe and
+crash-loops ([upstream #309](https://github.com/alex1989hu/kubelet-serving-cert-approver/issues/309)).
+The module fetches the manifest with the `http` data source at plan time and raises the limit to
+128Mi, so `terraform plan` needs to reach `raw.githubusercontent.com`.
 
 Both components are applied by Talos's manifest controller on the control plane, which reconciles
 continuously — enabling this on an already-running cluster works without re-bootstrapping.
@@ -211,7 +220,7 @@ kubectl top nodes
 
 ### Disabling does not uninstall
 
-Talos only ever *applies* `extraManifests` — it never prunes them. Setting
+Talos only ever *applies* `extraManifests` and `inlineManifests` — it never prunes them. Setting
 `metrics_server_enabled = false` stops Talos from re-applying the manifests, but everything already
 created stays in the cluster and must be removed by hand:
 
@@ -231,4 +240,5 @@ metrics-server left running after disabling will fail its scrapes.
 | terraform | >= 1.5.5 |
 | Telmate/proxmox | 3.0.2-rc07 |
 | siderolabs/talos | 0.10.1 |
+| hashicorp/http | ~> 3.4 |
 | hashicorp/time | ~> 0.9 |

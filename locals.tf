@@ -60,7 +60,40 @@ locals {
 
   # Bootstrap manifests applied by the control plane when metrics-server is enabled
   metrics_server_manifests = var.metrics_server_enabled ? [
-    "https://raw.githubusercontent.com/alex1989hu/kubelet-serving-cert-approver/${var.kubelet_serving_cert_approver_version}/deploy/standalone-install.yaml",
     "https://github.com/kubernetes-sigs/metrics-server/releases/download/${var.metrics_server_version}/components.yaml",
   ] : []
+
+  # The approver's upstream manifest limits it to 32Mi, which it outgrows at
+  # startup. It doesn't get OOM-killed; the kernel reclaims its binary's pages
+  # instead, so it thrashes reading them back from disk, starts too slowly for
+  # its liveness probe, and crash-loops. See
+  # https://github.com/alex1989hu/kubelet-serving-cert-approver/issues/309
+  kubelet_serving_cert_approver_url = "https://raw.githubusercontent.com/alex1989hu/kubelet-serving-cert-approver/${var.kubelet_serving_cert_approver_version}/deploy/standalone-install.yaml"
+  kubelet_serving_cert_approver_resources = {
+    requests = { cpu = "10m", memory = "48Mi" }
+    limits   = { cpu = "250m", memory = "128Mi" }
+  }
+
+  # yamldecode only handles single documents, so patch the manifest one
+  # document at a time and re-join it as an inline manifest.
+  kubelet_serving_cert_approver_manifests = [
+    for r in data.http.kubelet_serving_cert_approver : {
+      name = "kubelet-serving-cert-approver"
+      contents = join("---\n", [
+        for doc in [for d in split("\n---\n", r.response_body) : yamldecode(d) if trimspace(d) != ""] :
+        doc.kind != "Deployment" ? yamlencode(doc) : yamlencode(merge(doc, {
+          spec = merge(doc.spec, {
+            template = merge(doc.spec.template, {
+              spec = merge(doc.spec.template.spec, {
+                containers = [
+                  for c in doc.spec.template.spec.containers :
+                  merge(c, { resources = local.kubelet_serving_cert_approver_resources })
+                ]
+              })
+            })
+          })
+        }))
+      ])
+    }
+  ]
 }

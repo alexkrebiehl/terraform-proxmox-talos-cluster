@@ -73,6 +73,16 @@ variable "talos_installer_image" {
   default     = "factory.talos.dev/installer/ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515:v1.12.2"
 }
 
+variable "kubernetes_version" {
+  description = <<-EOT
+    Kubernetes version written into the machine configuration (e.g. "1.35.11", no leading v).
+    null uses the Talos provider's default, which is fixed per provider release. Set this after
+    `talosctl upgrade-k8s`, or the next apply rewrites the control-plane images back to that default.
+  EOT
+  type        = string
+  default     = null
+}
+
 # =============================================================================
 # Worker Pools
 # =============================================================================

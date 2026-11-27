@@ -76,11 +76,12 @@ data "http" "kubelet_serving_cert_approver" {
 
 # Generate machine configuration for each control plane node
 data "talos_machine_configuration" "cp" {
-  count            = var.cp_count
-  cluster_name     = var.cluster_name
-  machine_type     = "controlplane"
-  cluster_endpoint = local.cluster_endpoint
-  machine_secrets  = talos_machine_secrets.this.machine_secrets
+  count              = var.cp_count
+  cluster_name       = var.cluster_name
+  machine_type       = "controlplane"
+  cluster_endpoint   = local.cluster_endpoint
+  machine_secrets    = talos_machine_secrets.this.machine_secrets
+  kubernetes_version = var.kubernetes_version
   config_patches = [
     yamlencode({
       machine = {
@@ -249,11 +250,12 @@ resource "proxmox_vm_qemu" "talos_worker" {
 
 # Generate machine configuration for each worker node
 data "talos_machine_configuration" "worker" {
-  count            = var.worker_count
-  cluster_name     = var.cluster_name
-  machine_type     = "worker"
-  cluster_endpoint = local.cluster_endpoint
-  machine_secrets  = talos_machine_secrets.this.machine_secrets
+  count              = var.worker_count
+  cluster_name       = var.cluster_name
+  machine_type       = "worker"
+  cluster_endpoint   = local.cluster_endpoint
+  machine_secrets    = talos_machine_secrets.this.machine_secrets
+  kubernetes_version = var.kubernetes_version
   config_patches = [
     yamlencode({
       machine = {
@@ -390,11 +392,12 @@ resource "proxmox_vm_qemu" "talos_worker_pool" {
 
 # Generate machine configuration for each worker pool node
 data "talos_machine_configuration" "worker_pool" {
-  for_each         = local.worker_pool_nodes
-  cluster_name     = var.cluster_name
-  machine_type     = "worker"
-  cluster_endpoint = local.cluster_endpoint
-  machine_secrets  = talos_machine_secrets.this.machine_secrets
+  for_each           = local.worker_pool_nodes
+  cluster_name       = var.cluster_name
+  machine_type       = "worker"
+  cluster_endpoint   = local.cluster_endpoint
+  machine_secrets    = talos_machine_secrets.this.machine_secrets
+  kubernetes_version = var.kubernetes_version
   config_patches = [
     yamlencode({
       machine = merge(

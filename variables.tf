@@ -54,7 +54,7 @@ variable "proxmox_ccm_region" {
 variable "proxmox_ccm_version" {
   description = "Version of the Proxmox Cloud Controller Manager to deploy"
   type        = string
-  default     = "v0.13.0"
+  default     = "v0.16.1"
 }
 
 # =============================================================================

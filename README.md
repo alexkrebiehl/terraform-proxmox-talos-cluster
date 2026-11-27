@@ -23,9 +23,11 @@ derived from `cp_first_ip` / `worker_first_ip`.
 
 ```hcl
 module "talos_cluster" {
-  source = "github.com/alexkrebiehl/terraform-proxmox-talos-cluster?ref=v2.0.0"
+  source = "github.com/alexkrebiehl/terraform-proxmox-talos-cluster?ref=v3.0.0"
 
-  cluster_name = "talos-cluster"
+  cluster_name  = "talos-cluster"
+  talos_version = "v1.14"
+  apply_mode    = "staged_if_needing_reboot"
   disk_storage = "zpool"
 
   # Network
@@ -103,6 +105,44 @@ Then bump the ref, delete the `unifi` provider block, required provider, and var
 root module, drop `network_dhcp_start` / `network_dhcp_stop` arguments if you set them, and confirm
 `terraform plan` reports no changes.
 
+### Upgrading from v2.x
+
+v3.0.0 writes the machine configuration as Talos v1.14 typed documents (`KubeletConfig`,
+`UnattendedInstallConfig`, `LinkConfig`, `Layer2VIPConfig`, `ResolverConfig`, `KubeNodeConfig`,
+`KubeAPIServerConfig`, `KubeInlineManifestConfig`, `KubeExternalManifestConfig`,
+`KernelModuleConfig`) instead of v1alpha1 `machine`/`cluster` fields. Under the v1.14 contract the
+generated config already carries those documents, and patching the old fields on top fails
+validation, so v3 requires `talos_version` v1.14 or later. Stay on v2.x to keep an older contract.
+
+Moving an existing cluster's contract to v1.14 also turns on the defaults Talos gives new v1.14
+clusters:
+
+- `SecurityProfileConfig` `workloadIsolation: true`: containerd, the kubelet and pods run in their
+  own PID and mount namespace. The in-tree iSCSI volume plugin stops working; CSI drivers are fine.
+- `VolumeConfig` `EPHEMERAL` `mount.secure: true`: `/var` is mounted `nosuid,nodev`.
+- `FilesystemTrimConfig`: a weekly fstrim.
+- `KubeAuthenticationConfig`: anonymous API access only to `/livez`, `/readyz` and `/healthz`.
+- `KubeEtcdEncryptionConfig` is rendered as given: secretbox only, with no `identity` fallback for
+  reading Secrets stored unencrypted. Talos clusters encrypt Secrets from bootstrap, so none should
+  exist.
+
+Talos applies the new config without a reboot (the API server restarts on control-plane nodes), but
+workload isolation and the `/var` mount options only take effect at the next boot.
+
+1. Back up state, then set `talos_version = "v1.14"` and
+   `apply_mode = "staged_if_needing_reboot"` and bump the ref.
+2. `terraform plan` must show only in-place updates to `talos_machine_configuration_apply`.
+   **`talos_machine_secrets` must not change**: replacing it would mint a new cluster CA.
+3. Before applying, dry-run each node's rendered config:
+   `talosctl -n <ip> apply-config --dry-run -f <config>` (`terraform show -json <planfile>`
+   holds each `machine_configuration_input`; it contains secrets).
+4. Apply one control-plane node at a time
+   (`-target='module.<name>.talos_machine_configuration_apply.cp[0]'`, then `[1]`, `[2]`), so the
+   API servers don't all restart together. Then apply the rest.
+5. Reboot each node, one at a time, waiting for `talosctl health` between them, to activate the
+   new defaults. Check `/var` with `talosctl -n <ip> read /proc/mounts`.
+6. `terraform plan` reports no changes.
+
 ## Inputs
 
 ### Cluster
@@ -124,10 +164,11 @@ root module, drop `network_dhcp_start` / `network_dhcp_stop` arguments if you se
 | `talos_iso` | `string` | `local:iso/talos-v1.12.2-…-amd64.iso` | Proxmox ISO path for the Talos boot image |
 | `talos_installer_image` | `string` | Image Factory image w/ qemu-guest-agent | Talos installer image (keep its version in sync with `talos_iso`) |
 | `kubernetes_version` | `string` | `null` | Kubernetes version for the machine config (e.g. `1.35.11`). `null` means the Talos provider default; set it after `talosctl upgrade-k8s` so an apply does not roll the control plane back |
-| `talos_version` | `string` | `null` | Machine-config contract (e.g. `v1.12`). Set it to the Talos version the cluster was installed with and leave it; `null` follows the provider, so a provider upgrade moves every node to a newer contract on the next apply |
+| `talos_version` | `string` | `null` | Machine-config contract (e.g. `v1.14`); must be v1.14 or later. Pin it: `null` follows the provider, so a provider upgrade moves every node to a newer contract on the next apply. Node upgrades don't change it |
+| `apply_mode` | `string` | `"auto"` | How machine configs are applied. `staged_if_needing_reboot` stages any change that needs a reboot instead of rebooting, so an apply never reboots every node at once; reboot them yourself, one at a time |
 
 > **System extensions come from `talos_installer_image`, not the ISO.** Talos consumes
-> `machine.install.image` only at install time or during `talosctl upgrade` — re-applying a machine
+> the installer image (`UnattendedInstallConfig`) only at install time or during `talosctl upgrade` — re-applying a machine
 > configuration never reinstalls a running node. A node installed before this value was set keeps a
 > stock image, and no amount of `terraform apply` will add the qemu-guest-agent extension to it. Check
 > with `talosctl -n <ip> get extensions`; fix an affected node with
@@ -196,9 +237,9 @@ does both:
 2. Deploys the
    [kubelet-serving-cert-approver](https://github.com/alex1989hu/kubelet-serving-cert-approver),
    which auto-approves the kubelet serving CSRs that rotation creates, as a
-   `cluster.inlineManifests` entry, and
+   `KubeInlineManifestConfig` document, and
    [metrics-server](https://github.com/kubernetes-sigs/metrics-server) itself as a
-   `cluster.extraManifests` entry.
+   `KubeExternalManifestConfig` document.
 
 Versions are pinned through `metrics_server_version` and `kubelet_serving_cert_approver_version`
 rather than tracking `latest`, so upgrades are an explicit change.
@@ -222,7 +263,7 @@ kubectl top nodes
 
 ### Disabling does not uninstall
 
-Talos only ever *applies* `extraManifests` and `inlineManifests` — it never prunes them. Setting
+Talos only ever *applies* external and inline manifests — it never prunes them. Setting
 `metrics_server_enabled = false` stops Talos from re-applying the manifests, but everything already
 created stays in the cluster and must be removed by hand:
 

@@ -240,6 +240,6 @@ metrics-server left running after disabling will fail its scrapes.
 | --- | --- |
 | terraform | >= 1.5.5 |
 | Telmate/proxmox | 3.0.2-rc07 |
-| siderolabs/talos | 0.10.1 |
+| siderolabs/talos | 0.12.0 |
 | hashicorp/http | ~> 3.4 |
 | hashicorp/time | ~> 0.9 |

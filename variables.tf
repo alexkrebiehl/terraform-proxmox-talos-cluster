@@ -83,6 +83,18 @@ variable "kubernetes_version" {
   default     = null
 }
 
+variable "talos_version" {
+  description = <<-EOT
+    Talos machine-config contract version (e.g. "v1.12"): the Talos release whose defaults and
+    config layout the generated machine configuration follows. Set it to the version the cluster
+    was first installed with and keep it there; upgrading the nodes does not change it.
+    null uses the Talos provider's own version, so a provider upgrade would silently move every
+    node to a newer contract and its new defaults on the next apply.
+  EOT
+  type        = string
+  default     = null
+}
+
 # =============================================================================
 # Worker Pools
 # =============================================================================

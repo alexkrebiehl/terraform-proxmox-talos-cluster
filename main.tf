@@ -82,6 +82,7 @@ data "talos_machine_configuration" "cp" {
   cluster_endpoint   = local.cluster_endpoint
   machine_secrets    = talos_machine_secrets.this.machine_secrets
   kubernetes_version = var.kubernetes_version
+  talos_version      = var.talos_version
   config_patches = [
     yamlencode({
       machine = {
@@ -256,6 +257,7 @@ data "talos_machine_configuration" "worker" {
   cluster_endpoint   = local.cluster_endpoint
   machine_secrets    = talos_machine_secrets.this.machine_secrets
   kubernetes_version = var.kubernetes_version
+  talos_version      = var.talos_version
   config_patches = [
     yamlencode({
       machine = {
@@ -398,6 +400,7 @@ data "talos_machine_configuration" "worker_pool" {
   cluster_endpoint   = local.cluster_endpoint
   machine_secrets    = talos_machine_secrets.this.machine_secrets
   kubernetes_version = var.kubernetes_version
+  talos_version      = var.talos_version
   config_patches = [
     yamlencode({
       machine = merge(

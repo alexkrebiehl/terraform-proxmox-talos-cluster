@@ -124,6 +124,7 @@ root module, drop `network_dhcp_start` / `network_dhcp_stop` arguments if you se
 | `talos_iso` | `string` | `local:iso/talos-v1.12.2-…-amd64.iso` | Proxmox ISO path for the Talos boot image |
 | `talos_installer_image` | `string` | Image Factory image w/ qemu-guest-agent | Talos installer image (keep its version in sync with `talos_iso`) |
 | `kubernetes_version` | `string` | `null` | Kubernetes version for the machine config (e.g. `1.35.11`). `null` means the Talos provider default; set it after `talosctl upgrade-k8s` so an apply does not roll the control plane back |
+| `talos_version` | `string` | `null` | Machine-config contract (e.g. `v1.12`). Set it to the Talos version the cluster was installed with and leave it; `null` follows the provider, so a provider upgrade moves every node to a newer contract on the next apply |
 
 > **System extensions come from `talos_installer_image`, not the ISO.** Talos consumes
 > `machine.install.image` only at install time or during `talosctl upgrade` — re-applying a machine
@@ -240,6 +241,6 @@ metrics-server left running after disabling will fail its scrapes.
 | --- | --- |
 | terraform | >= 1.5.5 |
 | Telmate/proxmox | 3.0.2-rc07 |
-| siderolabs/talos | 0.10.1 |
+| siderolabs/talos | 0.12.0 |
 | hashicorp/http | ~> 3.4 |
 | hashicorp/time | ~> 0.9 |

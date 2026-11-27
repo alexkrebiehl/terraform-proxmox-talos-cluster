@@ -164,7 +164,7 @@ root module, drop `network_dhcp_start` / `network_dhcp_stop` arguments if you se
 | `proxmox_ccm_token_secret` | `string` | _required_ | Proxmox API token secret for the CCM (sensitive) |
 | `proxmox_ccm_region` | `string` | _required_ | Region identifier for the CCM |
 | `proxmox_ccm_insecure` | `bool` | `false` | Skip TLS verification for the Proxmox API connection |
-| `proxmox_ccm_version` | `string` | `"v0.13.0"` | Version of the CCM to deploy |
+| `proxmox_ccm_version` | `string` | `"v0.16.1"` | Version of the CCM to deploy |
 
 ### Metrics server
 

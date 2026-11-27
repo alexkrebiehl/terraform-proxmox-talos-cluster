@@ -83,76 +83,11 @@ data "talos_machine_configuration" "cp" {
   machine_secrets    = talos_machine_secrets.this.machine_secrets
   kubernetes_version = var.kubernetes_version
   talos_version      = var.talos_version
-  config_patches = [
-    yamlencode({
-      machine = {
-        kubelet = {
-          extraArgs = local.kubelet_extra_args
-        }
-        install = {
-          # Image Factory installer with qemu-guest-agent extension
-          image = var.talos_installer_image
-        }
-        network = {
-          interfaces = [
-            merge(
-              {
-                interface = "ens18"
-                addresses = ["${local.cp_ips[count.index]}/${local.network_prefix_length}"]
-                routes = [
-                  {
-                    network = "0.0.0.0/0"
-                    gateway = var.gateway
-                  }
-                ]
-              },
-              local.vip_enabled ? { vip = { ip = var.cluster_vip } } : {}
-            )
-          ]
-          nameservers = var.nameservers
-        }
-      }
-      cluster = {
-        inlineManifests = concat([
-          {
-            name : "proxmox-cloud-controller-manager",
-            contents : <<EOF
-apiVersion: v1
-kind: Secret
-type: Opaque
-metadata:
-  name: proxmox-cloud-controller-manager
-  namespace: kube-system
-stringData:
-  config.yaml: |
-    clusters:
-      - url: ${var.proxmox_ccm_url}
-        insecure: ${var.proxmox_ccm_insecure}
-        token_id: "${var.proxmox_ccm_token_id}"
-        token_secret: "${var.proxmox_ccm_token_secret}"
-        region: ${var.proxmox_ccm_region}
-EOF
-          },
-        ], local.kubelet_serving_cert_approver_manifests)
-        externalCloudProvider = {
-          enabled = true
-          manifests = [
-            "https://raw.githubusercontent.com/sergelogvinov/proxmox-cloud-controller-manager/${var.proxmox_ccm_version}/docs/deploy/cloud-controller-manager.yml",
-          ]
-        }
-        extraManifests = local.metrics_server_manifests
-        apiServer = local.vip_enabled ? {
-          certSANs = [var.cluster_vip]
-        } : null
-      }
-    }),
-    yamlencode({
-      apiVersion = "v1alpha1"
-      kind       = "HostnameConfig"
-      hostname   = "${var.cluster_name}-cp-${count.index + 1}"
-      auto       = "off"
-    })
-  ]
+  config_patches = concat(
+    local.node_patches["${var.cluster_name}-cp-${count.index + 1}"],
+    local.common_patches,
+    local.cp_patches,
+  )
 }
 
 # Client configuration for talosctl
@@ -168,6 +103,7 @@ resource "talos_machine_configuration_apply" "cp" {
   count                       = var.cp_count
   client_configuration        = talos_machine_secrets.this.client_configuration
   machine_configuration_input = data.talos_machine_configuration.cp[count.index].machine_configuration
+  apply_mode                  = var.apply_mode
   # Connect using the DHCP IP reported by the qemu-guest-agent during initial
   # bring-up, falling back to the static IP the config assigns. The fallback
   # matters once the node is running: if the guest agent stops reporting,
@@ -258,40 +194,10 @@ data "talos_machine_configuration" "worker" {
   machine_secrets    = talos_machine_secrets.this.machine_secrets
   kubernetes_version = var.kubernetes_version
   talos_version      = var.talos_version
-  config_patches = [
-    yamlencode({
-      machine = {
-        kubelet = {
-          extraArgs = local.kubelet_extra_args
-        }
-        install = {
-          # Image Factory installer with qemu-guest-agent extension
-          image = var.talos_installer_image
-        }
-        network = {
-          interfaces = [
-            {
-              interface = "ens18"
-              addresses = ["${local.worker_ips[count.index]}/${local.network_prefix_length}"]
-              routes = [
-                {
-                  network = "0.0.0.0/0"
-                  gateway = var.gateway
-                }
-              ]
-            }
-          ]
-          nameservers = var.nameservers
-        }
-      }
-    }),
-    yamlencode({
-      apiVersion = "v1alpha1"
-      kind       = "HostnameConfig"
-      hostname   = "${var.cluster_name}-worker-${count.index + 1}"
-      auto       = "off"
-    })
-  ]
+  config_patches = concat(
+    local.node_patches["${var.cluster_name}-worker-${count.index + 1}"],
+    local.common_patches,
+  )
 }
 
 # Apply machine configuration to each worker node (after cluster bootstrap)
@@ -301,6 +207,7 @@ resource "talos_machine_configuration_apply" "worker" {
 
   client_configuration        = talos_machine_secrets.this.client_configuration
   machine_configuration_input = data.talos_machine_configuration.worker[count.index].machine_configuration
+  apply_mode                  = var.apply_mode
   # Connect using the DHCP IP from Proxmox, falling back to the static IP
   # (see the control plane equivalent above)
   node = coalesce(proxmox_vm_qemu.talos_worker[count.index].default_ipv4_address, local.worker_ips[count.index])
@@ -401,48 +308,20 @@ data "talos_machine_configuration" "worker_pool" {
   machine_secrets    = talos_machine_secrets.this.machine_secrets
   kubernetes_version = var.kubernetes_version
   talos_version      = var.talos_version
-  config_patches = [
-    yamlencode({
-      machine = merge(
-        {
-          kubelet = {
-            extraArgs = local.kubelet_extra_args
-          }
-          install = {
-            # Pool-specific Image Factory installer, falling back to the
-            # cluster-wide image when the pool does not override it.
-            image = each.value.installer_image
-          }
-          network = {
-            interfaces = [
-              {
-                interface = "ens18"
-                addresses = ["${each.value.ip}/${local.network_prefix_length}"]
-                routes = [
-                  {
-                    network = "0.0.0.0/0"
-                    gateway = var.gateway
-                  }
-                ]
-              }
-            ]
-            nameservers = var.nameservers
-          }
-        },
-        length(each.value.node_labels) > 0 ? { nodeLabels = each.value.node_labels } : {},
-        length(each.value.node_taints) > 0 ? { nodeTaints = each.value.node_taints } : {},
-        length(each.value.kernel_modules) > 0 ? {
-          kernel = { modules = [for m in each.value.kernel_modules : { name = m }] }
-        } : {},
-      )
-    }),
-    yamlencode({
+  config_patches = concat(
+    local.node_patches[each.value.name],
+    local.common_patches,
+    length(each.value.node_labels) > 0 || length(each.value.node_taints) > 0 ? [yamlencode(merge(
+      { apiVersion = "v1alpha1", kind = "KubeNodeConfig" },
+      length(each.value.node_labels) > 0 ? { labels = each.value.node_labels } : {},
+      length(each.value.node_taints) > 0 ? { taints = each.value.node_taints } : {},
+    ))] : [],
+    [for m in each.value.kernel_modules : yamlencode({
       apiVersion = "v1alpha1"
-      kind       = "HostnameConfig"
-      hostname   = each.value.name
-      auto       = "off"
-    })
-  ]
+      kind       = "KernelModuleConfig"
+      name       = m
+    })],
+  )
 }
 
 # Apply machine configuration to each worker pool node (after cluster bootstrap)
@@ -452,6 +331,7 @@ resource "talos_machine_configuration_apply" "worker_pool" {
 
   client_configuration        = talos_machine_secrets.this.client_configuration
   machine_configuration_input = data.talos_machine_configuration.worker_pool[each.key].machine_configuration
+  apply_mode                  = var.apply_mode
   # Connect using the DHCP IP from Proxmox, falling back to the static IP
   # (see the control plane equivalent above)
   node = coalesce(proxmox_vm_qemu.talos_worker_pool[each.key].default_ipv4_address, each.value.ip)

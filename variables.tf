@@ -85,14 +85,42 @@ variable "kubernetes_version" {
 
 variable "talos_version" {
   description = <<-EOT
-    Talos machine-config contract version (e.g. "v1.12"): the Talos release whose defaults and
-    config layout the generated machine configuration follows. Set it to the version the cluster
-    was first installed with and keep it there; upgrading the nodes does not change it.
+    Talos machine-config contract version (e.g. "v1.14"): the Talos release whose defaults and
+    config layout the generated machine configuration follows. This module's patches use the
+    multi-document layout, so it must be v1.14 or later. Upgrading the nodes does not change it:
+    move it on purpose, then roll the nodes (see "Upgrading from v2.x" in README.md).
     null uses the Talos provider's own version, so a provider upgrade would silently move every
     node to a newer contract and its new defaults on the next apply.
   EOT
   type        = string
   default     = null
+
+  validation {
+    condition = var.talos_version == null || try(
+      tonumber(split(".", trimprefix(var.talos_version, "v"))[0]) > 1 ||
+      (tonumber(split(".", trimprefix(var.talos_version, "v"))[0]) == 1 &&
+      tonumber(split(".", trimprefix(var.talos_version, "v"))[1]) >= 14),
+      false
+    )
+    error_message = "talos_version must be v1.14 or later (e.g. \"v1.14\"): the machine-config patches use the v1.14 multi-document layout. Stay on module v2.x for an older contract."
+  }
+}
+
+variable "apply_mode" {
+  description = <<-EOT
+    How machine configs are applied: auto, reboot, no_reboot, staged or staged_if_needing_reboot.
+    auto reboots a node whenever a change needs it, and Terraform applies every node at once, so
+    such a change can reboot the whole control plane together. staged_if_needing_reboot dry-runs
+    each change and stages it instead when it needs a reboot, leaving you to reboot the nodes one
+    at a time (`talosctl -n <ip> reboot`).
+  EOT
+  type        = string
+  default     = "auto"
+
+  validation {
+    condition     = contains(["auto", "reboot", "no_reboot", "staged", "staged_if_needing_reboot"], var.apply_mode)
+    error_message = "apply_mode must be one of auto, reboot, no_reboot, staged, staged_if_needing_reboot."
+  }
 }
 
 # =============================================================================

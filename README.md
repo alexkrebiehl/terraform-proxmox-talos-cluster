@@ -123,6 +123,7 @@ root module, drop `network_dhcp_start` / `network_dhcp_stop` arguments if you se
 | `start_at_node_boot` | `bool` | `true` | Start cluster VMs automatically when the Proxmox node boots |
 | `talos_iso` | `string` | `local:iso/talos-v1.12.2-…-amd64.iso` | Proxmox ISO path for the Talos boot image |
 | `talos_installer_image` | `string` | Image Factory image w/ qemu-guest-agent | Talos installer image (keep its version in sync with `talos_iso`) |
+| `kubernetes_version` | `string` | `null` | Kubernetes version for the machine config (e.g. `1.35.11`). `null` means the Talos provider default; set it after `talosctl upgrade-k8s` so an apply does not roll the control plane back |
 
 > **System extensions come from `talos_installer_image`, not the ISO.** Talos consumes
 > `machine.install.image` only at install time or during `talosctl upgrade` — re-applying a machine
